@@ -13,7 +13,8 @@ body{font-family:sans-serif;background:#f5f3ef;max-width:480px;margin:0 auto;pad
 .header-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
 .header-title-sub{font-size:12px;color:#999;letter-spacing:1px}
 .header-title{font-size:20px;font-weight:700;color:#2d2d2d}
-.urgent-badge{background:#fef3cd;border:1px solid #f5c842;border-radius:8px;padding:4px 10px;font-size:12px;color:#856404;font-weight:600}
+.badge{border-radius:8px;padding:4px 10px;font-size:12px;font-weight:600}
+.badge-yellow{background:#fef3cd;border:1px solid #f5c842;color:#856404}
 .tabs{display:flex}
 .tab{flex:1;padding:10px 0;border:none;background:none;cursor:pointer;font-size:13px;color:#888;border-bottom:2px solid transparent;font-family:sans-serif}
 .tab.active{font-weight:700;color:#3d6b57;border-bottom:2px solid #3d6b57}
@@ -24,7 +25,7 @@ body{font-family:sans-serif;background:#f5f3ef;max-width:480px;margin:0 auto;pad
 .month-btn.active{background:#3d6b57;color:#fff;border-color:#3d6b57}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px}
 .card{background:#fff;border-radius:14px;padding:16px;margin-bottom:12px}
-.card-dark{background:#2d2d2d;border-radius:14px;padding:16px;margin-bottom:20px}
+.card-dark{background:#2d2d2d;border-radius:14px;padding:16px;margin-bottom:16px}
 .card-label{font-size:11px;color:#999;margin-bottom:4px}
 .card-label-dark{font-size:11px;color:#aaa;margin-bottom:4px}
 .card-value-green{font-size:22px;font-weight:700;color:#3d6b57}
@@ -77,6 +78,17 @@ body{font-family:sans-serif;background:#f5f3ef;max-width:480px;margin:0 auto;pad
 .nav-btn.active .nav-label{color:#3d6b57;font-weight:700}
 .more-btn{width:100%;margin-top:8px;padding:8px;background:none;border:1px solid #e8e4de;border-radius:8px;color:#888;font-size:12px;cursor:pointer;font-family:sans-serif}
 .unset{color:#ccc;font-size:12px}
+/* 結算卡片 */
+.settle-card{border-radius:14px;padding:16px;margin-bottom:16px;border:1.5px solid}
+.settle-pending{background:#fff8ec;border-color:#f5c842}
+.settle-done{background:#f0f7f3;border-color:#b8d4c2}
+.settle-title{font-size:13px;font-weight:600;margin-bottom:8px}
+.settle-amount{font-size:24px;font-weight:700;color:#3d6b57;margin-bottom:4px}
+.settle-desc{font-size:12px;color:#888;margin-bottom:12px}
+.settle-btn{padding:10px 20px;border-radius:10px;border:none;cursor:pointer;font-size:13px;font-weight:600;font-family:sans-serif}
+.settle-btn-confirm{background:#3d6b57;color:#fff}
+.settle-btn-done{background:none;color:#3d6b57;border:1.5px solid #3d6b57;padding:6px 14px;border-radius:8px;font-size:12px;font-family:sans-serif;cursor:pointer}
+.settle-history-row{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #f0ede8;font-size:13px}
 </style>
 </head>
 <body>
@@ -87,18 +99,20 @@ body{font-family:sans-serif;background:#f5f3ef;max-width:480px;margin:0 auto;pad
       <div class="header-title-sub">家庭帳本</div>
       <div class="header-title">伃 &amp; 絜</div>
     </div>
-    <div id="urgentBadge" class="urgent-badge" style="display:none"></div>
+    <div id="urgentBadge" class="badge badge-yellow" style="display:none"></div>
   </div>
   <div class="tabs">
     <button class="tab active" onclick="switchTab('overview')">總覽</button>
     <button class="tab" onclick="switchTab('expenses')">記帳</button>
     <button class="tab" onclick="switchTab('bills')">繳費提醒</button>
+    <button class="tab" onclick="switchTab('settle')">結算</button>
   </div>
 </div>
 
 <!-- 總覽 -->
 <div id="page-overview" class="page active">
   <div class="months" id="monthsOverview"></div>
+  <div id="settleReminderOverview"></div>
   <div class="grid2">
     <div class="card"><div class="card-label">本月 伃 負擔</div><div class="card-value-green" id="totalYu">NT$ 0</div></div>
     <div class="card"><div class="card-label">本月 絜 負擔</div><div class="card-value-blue" id="totalSis">NT$ 0</div></div>
@@ -129,12 +143,20 @@ body{font-family:sans-serif;background:#f5f3ef;max-width:480px;margin:0 auto;pad
   <div id="billList"></div>
 </div>
 
+<!-- 結算 -->
+<div id="page-settle" class="page">
+  <div style="font-size:12px;color:#888;margin-bottom:16px;line-height:1.6">每雙月 15 日提醒結算，絜將水費 + 電費各一半轉給伃。</div>
+  <div id="settleCurrentCard"></div>
+  <div id="settleHistory"></div>
+</div>
+
 <button class="fab" id="fab" onclick="openAddModal()">＋</button>
 
 <div class="bottom-nav">
   <button class="nav-btn active" onclick="switchTab('overview')"><span class="nav-icon">📊</span><span class="nav-label">總覽</span></button>
   <button class="nav-btn" onclick="switchTab('expenses')"><span class="nav-icon">📝</span><span class="nav-label">記帳</span></button>
   <button class="nav-btn" onclick="switchTab('bills')"><span class="nav-icon">🔔</span><span class="nav-label">提醒</span></button>
+  <button class="nav-btn" onclick="switchTab('settle')"><span class="nav-icon">💸</span><span class="nav-label">結算</span></button>
 </div>
 
 <!-- 新增支出 Modal -->
@@ -206,6 +228,7 @@ const DEFAULT_BILLS = [
 
 let expenses = [];
 let bills = [...DEFAULT_BILLS];
+let settlements = [];
 let currentMonth = getCurrentMonth();
 let currentPayer = "伃";
 let editingBillId = null;
@@ -227,11 +250,26 @@ function getDaysUntil(day) {
 }
 function n(x) { return Number(x)||0; }
 
+// 判斷是否為雙月
+function isEvenMonth(ym) {
+  const m = parseInt(ym.split("-")[1]);
+  return m % 2 === 0;
+}
+
+// 計算某月的結算金額（水費÷2 + 電費÷2）
+function calcSettleAmount(ym) {
+  const me = expenses.filter(e => e.date?.startsWith(ym));
+  const water = me.filter(e => e.category === "水費").reduce((s,e) => s+n(e.amount), 0);
+  const electric = me.filter(e => e.category === "電費").reduce((s,e) => s+n(e.amount), 0);
+  return Math.round((water + electric) / 2);
+}
+
 // Firebase 監聽
 db.collection("expenses").onSnapshot(snap => {
   expenses = snap.docs.map(d => ({id:d.id,...d.data()}));
   expenses.sort((a,b) => (b.date||"").localeCompare(a.date||""));
   render();
+  renderSettle();
 });
 
 db.collection("bills").onSnapshot(snap => {
@@ -245,20 +283,27 @@ db.collection("bills").onSnapshot(snap => {
   updateUrgentBadge();
 });
 
+db.collection("settlements").onSnapshot(snap => {
+  settlements = snap.docs.map(d => ({id:d.id,...d.data()}));
+  settlements.sort((a,b) => (b.month||"").localeCompare(a.month||""));
+  renderSettle();
+});
+
 // Tab 切換
 let currentTab = "overview";
+const tabList = ["overview","expenses","bills","settle"];
 function switchTab(tab) {
   currentTab = tab;
   document.querySelectorAll(".page").forEach(p => p.classList.remove("active"));
   document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
   document.querySelectorAll(".nav-btn").forEach(b => b.classList.remove("active"));
   document.getElementById("page-"+tab).classList.add("active");
-  const tabs = ["overview","expenses","bills"];
-  document.querySelectorAll(".tab")[tabs.indexOf(tab)].classList.add("active");
-  document.querySelectorAll(".nav-btn")[tabs.indexOf(tab)].classList.add("active");
+  document.querySelectorAll(".tab")[tabList.indexOf(tab)].classList.add("active");
+  document.querySelectorAll(".nav-btn")[tabList.indexOf(tab)].classList.add("active");
   document.getElementById("fab").style.display = tab === "expenses" ? "none" : "flex";
   if (tab === "overview" || tab === "expenses") renderMonths();
   if (tab === "expenses") renderExpenses();
+  if (tab === "settle") renderSettle();
 }
 
 function getMonths() {
@@ -309,7 +354,6 @@ function render() {
     const ct = me.filter(e=>e.category===cat).reduce((s,e)=>s+n(e.amount),0);
     return {cat,ct};
   }).filter(x=>x.ct>0);
-
   if (catRows.length === 0) { breakdown.style.display="none"; }
   else {
     breakdown.style.display="block";
@@ -320,6 +364,31 @@ function render() {
         <div class="bar-track"><div class="bar-fill" style="width:${pct}%"></div></div>
       </div>`;
     }).join("");
+  }
+
+  // 結算提醒（總覽頁）
+  const now = new Date();
+  const cm = getCurrentMonth();
+  const reminderEl = document.getElementById("settleReminderOverview");
+  if (isEvenMonth(cm) && now.getDate() >= 15) {
+    const existing = settlements.find(s => s.month === cm);
+    if (!existing) {
+      const amt = calcSettleAmount(cm);
+      reminderEl.innerHTML = `<div class="settle-card settle-pending" style="margin-bottom:16px">
+        <div class="settle-title">💸 本月結算提醒</div>
+        <div class="settle-amount">NT$ ${amt.toLocaleString()}</div>
+        <div class="settle-desc">絜應轉給伃（水費 + 電費各一半）</div>
+        <button class="settle-btn settle-btn-confirm" onclick="switchTab('settle')">前往結算頁面 →</button>
+      </div>`;
+    } else if (existing.confirmed) {
+      reminderEl.innerHTML = `<div class="settle-card settle-done" style="margin-bottom:16px">
+        <div style="font-size:13px;color:#3d6b57;font-weight:600">✓ 本月已結清</div>
+      </div>`;
+    } else {
+      reminderEl.innerHTML = "";
+    }
+  } else {
+    reminderEl.innerHTML = "";
   }
 
   // 最近紀錄
@@ -333,7 +402,6 @@ function render() {
     moreBtn.style.display = me.length > 5 ? "block" : "none";
     moreBtn.textContent = `查看全部 ${me.length} 筆 →`;
   }
-
   renderMonths();
 }
 
@@ -403,6 +471,76 @@ function updateUrgentBadge() {
   }
 }
 
+// 結算頁
+function renderSettle() {
+  const now = new Date();
+  const cm = getCurrentMonth();
+  const currentEl = document.getElementById("settleCurrentCard");
+  const historyEl = document.getElementById("settleHistory");
+  if (!currentEl || !historyEl) return;
+
+  // 本月結算卡（只在雙月且>=15日顯示）
+  if (isEvenMonth(cm) && now.getDate() >= 15) {
+    const existing = settlements.find(s => s.month === cm);
+    const amt = calcSettleAmount(cm);
+    if (!existing) {
+      currentEl.innerHTML = `<div class="settle-card settle-pending">
+        <div class="settle-title">💸 ${formatMonth(cm)} 結算</div>
+        <div class="settle-amount">NT$ ${amt.toLocaleString()}</div>
+        <div class="settle-desc">絜應轉給伃<br>水費 NT$ ${Math.round(expenses.filter(e=>e.date?.startsWith(cm)&&e.category==="水費").reduce((s,e)=>s+n(e.amount),0)/2).toLocaleString()} + 電費 NT$ ${Math.round(expenses.filter(e=>e.date?.startsWith(cm)&&e.category==="電費").reduce((s,e)=>s+n(e.amount),0)/2).toLocaleString()}</div>
+        <button class="settle-btn settle-btn-confirm" onclick="confirmSettle('${cm}', ${amt})">✓ 確認收款</button>
+      </div>`;
+    } else if (existing.confirmed) {
+      currentEl.innerHTML = `<div class="settle-card settle-done">
+        <div class="settle-title">✓ ${formatMonth(cm)} 已結清</div>
+        <div style="font-size:20px;font-weight:700;color:#3d6b57;margin-bottom:4px">NT$ ${n(existing.amount).toLocaleString()}</div>
+        <div style="font-size:12px;color:#888">確認時間：${existing.confirmedAt||""}</div>
+      </div>`;
+    }
+  } else if (isEvenMonth(cm) && now.getDate() < 15) {
+    const daysLeft = 15 - now.getDate();
+    currentEl.innerHTML = `<div class="settle-card" style="background:#fff;border-color:#e8e4de">
+      <div class="settle-title">📅 ${formatMonth(cm)} 結算</div>
+      <div style="font-size:13px;color:#888;margin-top:4px">距離 15 日結算還有 ${daysLeft} 天</div>
+    </div>`;
+  } else {
+    const nextEvenMonth = (() => {
+      const d = new Date(now.getFullYear(), now.getMonth()+1, 1);
+      while (d.getMonth() % 2 !== 1) d.setMonth(d.getMonth()+1);
+      return `${d.getFullYear()}年${d.getMonth()+1}月`;
+    })();
+    currentEl.innerHTML = `<div class="settle-card" style="background:#fff;border-color:#e8e4de">
+      <div class="settle-title">📅 下次結算</div>
+      <div style="font-size:13px;color:#888;margin-top:4px">${nextEvenMonth} 15 日</div>
+    </div>`;
+  }
+
+  // 結算歷史
+  const past = settlements.filter(s => s.month !== cm && s.confirmed);
+  if (past.length > 0) {
+    historyEl.innerHTML = `<div class="card">
+      <div class="section-title">結算紀錄</div>
+      ${past.map(s => `<div class="settle-history-row">
+        <span style="color:#555">${formatMonth(s.month)}</span>
+        <span style="font-weight:600;color:#2d2d2d">NT$ ${n(s.amount).toLocaleString()} <span style="color:#3d6b57;font-size:11px">✓ 已結清</span></span>
+      </div>`).join("")}
+    </div>`;
+  } else {
+    historyEl.innerHTML = "";
+  }
+}
+
+function confirmSettle(month, amount) {
+  const now = new Date();
+  const dateStr = `${now.getFullYear()}/${now.getMonth()+1}/${now.getDate()}`;
+  db.collection("settlements").doc(month).set({
+    month: month,
+    amount: amount,
+    confirmed: true,
+    confirmedAt: dateStr
+  });
+}
+
 // 新增支出
 function openAddModal() {
   document.getElementById("formDate").value = getTodayStr();
@@ -412,15 +550,12 @@ function openAddModal() {
   setPayer("伃");
   document.getElementById("addModal").classList.add("open");
 }
-
 function setPayer(p) {
   currentPayer = p;
-  document.getElementById("payYu").className = "pay-btn" + (p==="伃"?" active":"");
-  document.getElementById("paySis").className = "pay-btn" + (p==="絜"?" active":"");
+  document.getElementById("payYu").className = "pay-btn"+(p==="伃"?" active":"");
+  document.getElementById("paySis").className = "pay-btn"+(p==="絜"?" active":"");
 }
-
 function closeModal(id) { document.getElementById(id).classList.remove("open"); }
-
 function addExpense() {
   const amount = parseFloat(document.getElementById("formAmount").value);
   if (!amount || isNaN(amount)) return;
@@ -434,7 +569,6 @@ function addExpense() {
   });
   closeModal("addModal");
 }
-
 function deleteExpense(id) {
   if (confirm("確定刪除？")) db.collection("expenses").doc(id).delete();
 }
@@ -451,7 +585,6 @@ function openBillModal(id) {
   document.getElementById("billSplit").checked = bill.splitWith;
   document.getElementById("billModal").classList.add("open");
 }
-
 function saveBill() {
   if (!editingBillId) return;
   const bill = bills.find(b => b.id === editingBillId);
