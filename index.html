@@ -78,6 +78,17 @@ body{font-family:sans-serif;background:#f5f3ef;max-width:480px;margin:0 auto;pad
 .nav-btn.active .nav-label{color:#3d6b57;font-weight:700}
 .more-btn{width:100%;margin-top:8px;padding:8px;background:none;border:1px solid #e8e4de;border-radius:8px;color:#888;font-size:12px;cursor:pointer;font-family:sans-serif}
 .unset{color:#ccc;font-size:12px}
+/* 繳費清單 */
+.checklist-row{display:flex;align-items:center;justify-content:space-between;padding:13px 0;border-bottom:1px solid #f0ede8;cursor:pointer}
+.checklist-row:last-child{border-bottom:none}
+.checklist-left{display:flex;align-items:center;gap:12px}
+.checklist-check{width:22px;height:22px;border-radius:6px;border:2px solid #ddd;background:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all 0.2s}
+.checklist-check.done{background:#3d6b57;border-color:#3d6b57;color:#fff;font-size:13px}
+.checklist-name{font-size:14px;font-weight:600;color:#2d2d2d}
+.checklist-name.done{color:#aaa;text-decoration:line-through}
+.checklist-date{font-size:11px;color:#3d6b57;margin-top:2px}
+.checklist-amount{font-size:14px;font-weight:600;color:#2d2d2d}
+.checklist-amount.done{color:#aaa}
 /* 結算卡片 */
 .settle-card{border-radius:14px;padding:16px;margin-bottom:16px;border:1.5px solid}
 .settle-pending{background:#fff8ec;border-color:#f5c842}
@@ -139,7 +150,9 @@ body{font-family:sans-serif;background:#f5f3ef;max-width:480px;margin:0 auto;pad
 
 <!-- 繳費提醒 -->
 <div id="page-bills" class="page">
-  <div style="font-size:12px;color:#888;margin-bottom:16px;line-height:1.6">點擊帳單可編輯金額與到期日，7 天內到期會出現警示。</div>
+  <div class="months" id="monthsBills"></div>
+  <div class="card" id="paymentChecklist"></div>
+  <div style="font-size:12px;color:#888;margin:4px 0 12px;font-weight:600">帳單設定</div>
   <div id="billList"></div>
 </div>
 
@@ -270,6 +283,7 @@ db.collection("expenses").onSnapshot(snap => {
   expenses.sort((a,b) => (b.date||"").localeCompare(a.date||""));
   render();
   renderSettle();
+  if (currentTab === 'bills') renderPaymentChecklist(currentMonth);
 });
 
 db.collection("bills").onSnapshot(snap => {
@@ -321,6 +335,21 @@ function renderMonths() {
       `<button class="month-btn${m===currentMonth?" active":""}" onclick="setMonth('${m}')">${formatMonth(m)}</button>`
     ).join("");
   });
+}
+
+function renderMonthsBills() {
+  const months = getMonths();
+  const el = document.getElementById("monthsBills");
+  if (!el) return;
+  el.innerHTML = months.slice(0,6).map(m =>
+    `<button class="month-btn${m===currentMonth?" active":""}" onclick="setBillMonth('${m}')">${formatMonth(m)}</button>`
+  ).join("");
+}
+
+function setBillMonth(m) {
+  currentMonth = m;
+  renderMonthsBills();
+  renderPaymentChecklist(m);
 }
 
 function setMonth(m) {
@@ -430,6 +459,70 @@ function renderExpenses() {
     el.innerHTML = `<div class="empty">本月尚無紀錄</div>`;
   } else {
     el.innerHTML = me.map(e => expenseRowHTML(e, true)).join("");
+  }
+}
+
+function renderPaymentChecklist(ym) {
+  const el = document.getElementById("paymentChecklist");
+  if (!el) return;
+  const now = new Date();
+  const isEven = isEvenMonth(ym);
+  
+  // 決定本月要顯示哪些項目
+  const items = [
+    {id:"c-管理費", name:"管理費", billId:"b1"},
+    {id:"c-天然氣", name:"天然氣", billId:"b2"},
+  ];
+  if (isEven) {
+    items.push({id:"c-水費", name:"水費", billId:"b3"});
+    items.push({id:"c-電費", name:"電費", billId:"b4"});
+  }
+
+  const monthExp = expenses.filter(e => e.date?.startsWith(ym));
+
+  el.innerHTML = `<div class="section-title">${formatMonth(ym)} 繳費清單</div>` +
+    items.map(item => {
+      const bill = bills.find(b => b.id === item.billId);
+      const paid = monthExp.find(e => e.category === item.name);
+      const isDone = !!paid;
+      const dateStr = isDone ? paid.date.slice(5).replace("-","/")+" 已繳" : (bill?.amount ? `NT$ ${n(bill.amount).toLocaleString()}` : "未設定金額");
+      const amtStr = isDone ? (bill?.amount ? `NT$ ${n(bill.amount).toLocaleString()}` : "") : "";
+      return `<div class="checklist-row" onclick="togglePayment('${item.name}', '${ym}', ${isDone})">
+        <div class="checklist-left">
+          <div class="checklist-check${isDone?" done":"}">${isDone?"✓":""}</div>
+          <div>
+            <div class="checklist-name${isDone?" done":""}">${item.name}</div>
+            <div class="checklist-date">${dateStr}</div>
+          </div>
+        </div>
+        <div class="checklist-amount${isDone?" done":""}">${amtStr}</div>
+      </div>`;
+    }).join("");
+}
+
+function togglePayment(category, ym, isDone) {
+  if (isDone) {
+    // 取消：刪除該筆支出
+    const monthExp = expenses.filter(e => e.date?.startsWith(ym) && e.category === category);
+    if (monthExp.length > 0) {
+      if (confirm("取消「"+category+"」的繳費紀錄？")) {
+        db.collection("expenses").doc(monthExp[0].id).delete();
+      }
+    }
+  } else {
+    // 新增繳費紀錄
+    const bill = bills.find(b => b.name === category);
+    const today = getTodayStr();
+    if (confirm("標記「"+category+"」今日（"+today+"）已繳？")) {
+      db.collection("expenses").add({
+        date: today,
+        category: category,
+        amount: bill?.amount ? n(bill.amount) : 0,
+        paidBy: "伃",
+        split: bill?.splitWith || false,
+        note: "繳費紀錄"
+      });
+    }
   }
 }
 
@@ -598,10 +691,65 @@ function saveBill() {
   closeModal("billModal");
 }
 
+// 瀏覽器通知
+function requestNotificationPermission() {
+  if (!("Notification" in window)) return;
+  if (Notification.permission === "default") {
+    Notification.requestPermission();
+  }
+}
+
+function sendNotification(title, body) {
+  if (!("Notification" in window)) return;
+  if (Notification.permission === "granted") {
+    new Notification(title, {
+      body: body,
+      icon: "https://smileqq0119-dot.github.io/family-expenses/icon.png"
+    });
+  }
+}
+
+function checkAndNotify() {
+  if (Notification.permission !== "granted") return;
+
+  // 帳單到期提醒
+  bills.forEach(bill => {
+    const days = getDaysUntil(bill.day);
+    if (days <= 3) {
+      sendNotification(
+        `⏰ ${bill.name} 即將到期`,
+        `還有 ${days} 天，記得繳費！`
+      );
+    } else if (days <= 7) {
+      sendNotification(
+        `📋 ${bill.name} 快到期了`,
+        `${days} 天後到期（每月 ${bill.day} 日）`
+      );
+    }
+  });
+
+  // 雙月結算提醒
+  const now = new Date();
+  const cm = getCurrentMonth();
+  if (isEvenMonth(cm) && now.getDate() >= 15) {
+    const existing = settlements.find(s => s.month === cm);
+    if (!existing) {
+      const amt = calcSettleAmount(cm);
+      sendNotification(
+        `💸 ${formatMonth(cm)} 結算提醒`,
+        `絜應轉 NT$ ${amt.toLocaleString()} 給伃`
+      );
+    }
+  }
+}
+
 // 初始化
 document.getElementById("formDate").value = getTodayStr();
+requestNotificationPermission();
 render();
 renderBills();
+// 等資料載入後再發通知
+setTimeout(checkAndNotify, 3000);
 </script>
 </body>
 </html>
