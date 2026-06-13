@@ -489,7 +489,7 @@ function renderPaymentChecklist(ym) {
       const amtStr = isDone ? (bill?.amount ? `NT$ ${n(bill.amount).toLocaleString()}` : "") : "";
       return `<div class="checklist-row" onclick="togglePayment('${item.name}', '${ym}', ${isDone})">
         <div class="checklist-left">
-          <div class="checklist-check${isDone?" done":"}">${isDone?"✓":""}</div>
+          <div class="checklist-check${isDone?" done":""}">${isDone?"✓":""}</div>
           <div>
             <div class="checklist-name${isDone?" done":""}">${item.name}</div>
             <div class="checklist-date">${dateStr}</div>
