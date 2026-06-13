@@ -199,15 +199,20 @@ body{font-family:sans-serif;background:#f5f3ef;max-width:480px;margin:0 auto;pad
   </div>
 </div>
 
-<!-- 繳費輸入金額 Modal -->
+<!-- 繳費 Modal -->
 <div class="modal-bg" id="payModal" onclick="closeModal('payModal')">
   <div class="modal" onclick="event.stopPropagation()">
     <div class="modal-title" id="payModalTitle">繳費</div>
-    <div class="field-label">金額（NT$）</div>
-    <input type="number" id="payAmount" class="inp" placeholder="0">
-    <div class="field-label">繳費日期</div>
-    <input type="date" id="payDate" class="inp">
-    <button class="btn-primary" onclick="confirmPay()">確認已繳</button>
+    <div class="field-label">帳單金額（NT$）</div>
+    <input type="number" id="payAmount" class="inp" placeholder="收到帳單後輸入">
+    <div id="payDateSection">
+      <div class="field-label">繳費日期</div>
+      <input type="date" id="payDate" class="inp">
+    </div>
+    <div style="display:flex;gap:10px;margin-top:4px">
+      <button onclick="saveAmount()" style="flex:1;padding:13px;border-radius:12px;border:1.5px solid #3d6b57;background:#fff;color:#3d6b57;font-size:14px;font-weight:600;cursor:pointer;font-family:sans-serif">儲存金額</button>
+      <button onclick="confirmPay()" style="flex:1;padding:13px;border-radius:12px;border:none;background:#3d6b57;color:#fff;font-size:14px;font-weight:600;cursor:pointer;font-family:sans-serif">✓ 確認已繳</button>
+    </div>
   </div>
 </div>
 
@@ -375,59 +380,106 @@ function renderChecklist(ym) {
   el.innerHTML = `<div class="section-title">${formatMonth(ym)} 固定繳費</div>` +
     items.map(item => {
       const bill = bills.find(b => b.id===item.billId);
-      const paid = monthExp.find(e => e.category===item.name);
+      const paid = monthExp.find(e => e.category===item.name && e.paid===true);
       const isDone = !!paid;
       const tagColor = item.tag==="平分" ? "#5a7fa8" : "#7c9e87";
       const tagBg = item.tag==="平分" ? "#e8f0fa" : "#e8f3ee";
-      const amtDisplay = isDone
-        ? `NT$ ${n(paid.amount).toLocaleString()}`
-        : (bill?.amount ? `NT$ ${n(bill.amount).toLocaleString()}` : "未設定");
-      const subText = isDone
-        ? `${paid.date.slice(5).replace("-","/")} 已繳`
-        : "點擊登記繳費";
+      // 三種狀態：未設定金額 / 有金額待繳 / 已繳
+      const pending = monthExp.find(e => e.category===item.name && !e.paid);
+      const hasPaid = !!paid;
+      const hasAmount = hasPaid || !!pending || !!(bill?.amount);
 
-      return `<div class="checklist-row" onclick="${isDone ? `cancelPay('${paid.id}')` : `openPayModal('${item.name}','${item.billId}','${ym}')`}">
+      const amtDisplay = hasPaid
+        ? `NT$ ${n(paid.amount).toLocaleString()}`
+        : pending
+          ? `NT$ ${n(pending.amount).toLocaleString()}`
+          : (bill?.amount ? `NT$ ${n(bill.amount).toLocaleString()}` : "");
+
+      const subText = hasPaid
+        ? `${paid.date.slice(5).replace("-","/")} 已繳 ✓`
+        : pending
+          ? "待繳費"
+          : "點擊輸入金額";
+
+      const subColor = hasPaid ? "#3d6b57" : pending ? "#f5a623" : "#bbb";
+      const checkDone = hasPaid ? " done" : "";
+      const checkContent = hasPaid ? "✓" : "";
+      const onclick = hasPaid
+        ? `cancelPay('${paid.id}')`
+        : `openPayModal('${item.name}','${item.billId}','${ym}',${pending ? `'${pending.id}'` : "null"},${n(pending?.amount||bill?.amount||0)})`;
+
+      return `<div class="checklist-row" onclick="${onclick}">
         <div class="checklist-left">
-          <div class="check-box${isDone?" done":""}">${isDone?"✓":""}</div>
+          <div class="check-box${checkDone}">${checkContent}</div>
           <div>
             <div style="display:flex;align-items:center;gap:6px">
-              <span class="checklist-name${isDone?" done":""}">${item.name}</span>
+              <span class="checklist-name${hasPaid?" done":""}">${item.name}</span>
               <span style="font-size:10px;background:${tagBg};color:${tagColor};padding:1px 6px;border-radius:4px">${item.tag}</span>
             </div>
-            <div class="checklist-sub${isDone?"":" pending"}">${subText}</div>
+            <div style="font-size:11px;margin-top:2px;color:${subColor}">${subText}</div>
           </div>
         </div>
-        <div class="checklist-amt${isDone?" done":""}">${amtDisplay}</div>
+        <div class="checklist-amt${hasPaid?" done":""}">${amtDisplay}</div>
       </div>`;
     }).join("");
 }
 
-function openPayModal(name, billId, ym) {
-  payingItem = {name, billId, ym};
-  const bill = bills.find(b => b.id===billId);
-  document.getElementById("payModalTitle").textContent = `登記繳費：${name}`;
-  document.getElementById("payAmount").value = bill?.amount ? n(bill.amount) : "";
+function openPayModal(name, billId, ym, pendingId, existingAmt) {
+  payingItem = {name, billId, ym, pendingId};
+  document.getElementById("payModalTitle").textContent = `${name} 繳費`;
+  document.getElementById("payAmount").value = existingAmt || "";
   document.getElementById("payDate").value = getTodayStr();
   document.getElementById("payModal").classList.add("open");
+}
+
+function saveAmount() {
+  if (!payingItem) return;
+  const amount = parseFloat(document.getElementById("payAmount").value);
+  if (!amount||isNaN(amount)) { alert("請輸入金額"); return; }
+  const bill = bills.find(b => b.id===payingItem.billId);
+  
+  // 如果有 pending 紀錄先刪掉再新增
+  const doAdd = () => {
+    db.collection("expenses").add({
+      date: getTodayStr(),
+      category: payingItem.name,
+      amount, paidBy:"伃",
+      split: bill?.splitWith||false,
+      note:"", fixed:true, paid:false
+    });
+  };
+  
+  if (payingItem.pendingId) {
+    db.collection("expenses").doc(payingItem.pendingId).delete().then(doAdd);
+  } else {
+    doAdd();
+  }
+  closeModal("payModal");
 }
 
 function confirmPay() {
   if (!payingItem) return;
   const amount = parseFloat(document.getElementById("payAmount").value);
-  if (!amount || isNaN(amount)) return;
+  if (!amount||isNaN(amount)) { alert("請輸入金額"); return; }
+  const payDate = document.getElementById("payDate").value;
   const bill = bills.find(b => b.id===payingItem.billId);
-  db.collection("expenses").add({
-    date: document.getElementById("payDate").value,
-    category: payingItem.name,
-    amount: amount,
-    paidBy: "伃",
-    split: bill?.splitWith || false,
-    note: "",
-    fixed: true
-  });
-  // 同步更新帳單預設金額
-  if (bill && (!bill.amount || n(bill.amount) !== amount)) {
-    db.collection("bills").doc(payingItem.billId).set({...bill, amount: String(amount)});
+  
+  const doAdd = () => {
+    db.collection("expenses").add({
+      date: payDate,
+      category: payingItem.name,
+      amount, paidBy:"伃",
+      split: bill?.splitWith||false,
+      note:"", fixed:true, paid:true
+    });
+    // 同步更新帳單預設金額
+    if (bill) db.collection("bills").doc(payingItem.billId).set({...bill, amount:String(amount)});
+  };
+  
+  if (payingItem.pendingId) {
+    db.collection("expenses").doc(payingItem.pendingId).delete().then(doAdd);
+  } else {
+    doAdd();
   }
   closeModal("payModal");
 }
