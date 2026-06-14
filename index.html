@@ -304,13 +304,13 @@ function getDaysUntil(day) {
 function n(x) { return Number(x)||0; }
 function isEvenMonth(ym) { return parseInt(ym.split("-")[1]) % 2 === 0; }
 function calcSettle(ym) {
-  // 固定費用：水費+電費（伃先付，絜付一半給伃）
+  // 固定費用：水費+電費（雙月才有，伃先付，絜付一半給伃）
   const fixed = expenses.filter(e => e.date?.startsWith(ym) && e.fixed && e.paid);
   const water = fixed.filter(e=>e.category==="水費").reduce((s,e)=>s+n(e.amount),0);
   const elec  = fixed.filter(e=>e.category==="電費").reduce((s,e)=>s+n(e.amount),0);
-  const fixedAmt = Math.round((water+elec)/2); // 絜欠伃
+  const fixedAmt = Math.round((water+elec)/2); // 絜欠伃（雙月才有）
 
-  // 其他平分支出
+  // 其他平分支出（每月都算）
   const others = expenses.filter(e => e.date?.startsWith(ym) && !e.fixed && e.split);
   let yuOwes = 0;   // 伃欠絜（絜付的平分）
   let sisOwes = 0;  // 絜欠伃（伃付的平分）
@@ -567,19 +567,19 @@ function render() {
   const now = new Date();
   const cm = getCurrentMonth();
   const reminderEl = document.getElementById("settleReminderOverview");
-  if (isEvenMonth(cm) && now.getDate()>=15) {
+  if (now.getDate() >= 15) {
     const existing = settlements.find(s=>s.month===cm);
-    if (!existing) {
-      const s = calcSettle(cm);
+    const s = calcSettle(cm);
+    if (!existing && s.net !== 0) {
       const absAmt = Math.abs(s.net);
       const who = s.net>=0 ? "絜轉給伃" : "伃轉給絜";
-      reminderEl.innerHTML = `<div class="settle-card settle-pending">
+      reminderEl.innerHTML = `<div class="settle-card settle-pending" style="margin-bottom:16px">
         <div class="settle-title">💸 本月結算提醒</div>
         <div class="settle-amount">NT$ ${absAmt.toLocaleString()}</div>
         <div class="settle-desc">${who}</div>
         <button class="settle-btn" onclick="switchTab('settle')">前往結算 →</button>
       </div>`;
-    } else if (existing.confirmed) {
+    } else if (existing && existing.confirmed) {
       reminderEl.innerHTML = `<div class="settle-card settle-done" style="margin-bottom:16px"><div style="font-size:13px;color:#3d6b57;font-weight:600">✓ 本月已結清</div></div>`;
     } else { reminderEl.innerHTML=""; }
   } else { reminderEl.innerHTML=""; }
@@ -648,48 +648,41 @@ function renderSettle() {
   const historyEl = document.getElementById("settleHistory");
   if (!currentEl||!historyEl) return;
 
-  if (isEvenMonth(cm) && now.getDate()>=15) {
-    const existing = settlements.find(s=>s.month===cm);
-    const s = calcSettle(cm);
+  const existing = settlements.find(s=>s.month===cm);
+  const s = calcSettle(cm);
+  const absAmt = Math.abs(s.net);
+  const who = s.net>=0 ? "絜轉給伃" : "伃轉給絜";
+
+  if (now.getDate() >= 15) {
     if (!existing) {
-      const net = s.net;
-      const who = net >= 0 ? "絜轉給伃" : "伃轉給絜";
-      const absAmt = Math.abs(net);
-      let breakdown = `水費÷2：NT$ ${Math.round(s.water/2).toLocaleString()}　電費÷2：NT$ ${Math.round(s.elec/2).toLocaleString()}`;
-      if (s.sisOwes > 0) breakdown += `<br>其他（絜付一半）：＋NT$ ${s.sisOwes.toLocaleString()}`;
-      if (s.yuOwes > 0) breakdown += `<br>其他（伃付一半）：－NT$ ${s.yuOwes.toLocaleString()}`;
+      let breakdown = "";
+      if (s.water > 0) breakdown += `水費÷2：NT$ ${Math.round(s.water/2).toLocaleString()}<br>`;
+      if (s.elec > 0)  breakdown += `電費÷2：NT$ ${Math.round(s.elec/2).toLocaleString()}<br>`;
+      if (s.sisOwes > 0) breakdown += `其他（絜付一半）：＋NT$ ${s.sisOwes.toLocaleString()}<br>`;
+      if (s.yuOwes > 0)  breakdown += `其他（伃付一半）：－NT$ ${s.yuOwes.toLocaleString()}<br>`;
+      if (!breakdown) breakdown = "本月尚無平分項目";
       currentEl.innerHTML = `<div class="settle-card settle-pending">
         <div class="settle-title">💸 ${formatMonth(cm)} 結算</div>
         <div class="settle-amount">NT$ ${absAmt.toLocaleString()}</div>
-        <div class="settle-desc">${who}<br><br>${breakdown}</div>
-        <button class="settle-btn" onclick="confirmSettle('${cm}',${net})">✓ 確認收款</button>
+        <div class="settle-desc">${s.net===0?"本月無需結算":who}<br><br>${breakdown}</div>
+        ${s.net!==0 ? `<button class="settle-btn" onclick="confirmSettle('${cm}',${s.net})">✓ 確認收款</button>` : ""}
       </div>`;
     } else if (existing.confirmed) {
-      const absAmt = Math.abs(n(existing.amount));
-      const who = n(existing.amount)>=0 ? "絜轉給伃" : "伃轉給絜";
+      const exAmt = Math.abs(n(existing.amount));
+      const exWho = n(existing.amount)>=0 ? "絜轉給伃" : "伃轉給絜";
       currentEl.innerHTML = `<div class="settle-card settle-done">
         <div class="settle-title">✓ ${formatMonth(cm)} 已結清</div>
-        <div style="font-size:20px;font-weight:700;color:#3d6b57;margin-bottom:4px">NT$ ${absAmt.toLocaleString()}</div>
-        <div style="font-size:12px;color:#888">${who}・確認時間：${existing.confirmedAt||""}</div>
+        <div style="font-size:20px;font-weight:700;color:#3d6b57;margin-bottom:4px">NT$ ${exAmt.toLocaleString()}</div>
+        <div style="font-size:12px;color:#888">${exWho}・確認時間：${existing.confirmedAt||""}</div>
       </div>`;
     }
-  } else if (isEvenMonth(cm)) {
-    // 雙月但還沒到15號，預覽結算金額
-    const s = calcSettle(cm);
-    const absAmt = Math.abs(s.net);
-    const who = s.net>=0 ? "絜轉給伃" : "伃轉給絜";
-    currentEl.innerHTML = `<div class="settle-card settle-neutral">
-      <div class="settle-title">📅 ${formatMonth(cm)} 結算（預覽）</div>
-      <div style="font-size:20px;font-weight:700;color:#2d2d2d;margin:8px 0 4px">NT$ ${absAmt.toLocaleString()}</div>
-      <div style="font-size:12px;color:#888;margin-bottom:4px">${who}（15 日後可確認）</div>
-      <div style="font-size:11px;color:#bbb">距 15 日還有 ${15-now.getDate()} 天</div>
-    </div>`;
   } else {
-    const s = calcSettle(cm);
-    const absAmt = Math.abs(s.net);
+    // 還沒到15號，顯示預覽
     currentEl.innerHTML = `<div class="settle-card settle-neutral">
-      <div class="settle-title">📅 下次結算為雙月 15 日</div>
-      <div style="font-size:13px;color:#888;margin-top:4px">本月其他平分支出：NT$ ${(s.sisOwes+s.yuOwes).toLocaleString()}</div>
+      <div class="settle-title">📅 ${formatMonth(cm)} 結算預覽</div>
+      <div style="font-size:20px;font-weight:700;color:#2d2d2d;margin:8px 0 4px">NT$ ${absAmt.toLocaleString()}</div>
+      <div style="font-size:12px;color:#888;margin-bottom:4px">${s.net===0?"本月暫無平分項目":who}（15 日後可確認）</div>
+      <div style="font-size:11px;color:#bbb">距 15 日還有 ${15-now.getDate()} 天</div>
     </div>`;
   }
 
@@ -727,9 +720,13 @@ function checkAndNotify() {
   });
   const now = new Date();
   const cm = getCurrentMonth();
-  if (isEvenMonth(cm) && now.getDate()>=15 && !settlements.find(s=>s.month===cm)) {
-    const amt = calcSettleAmount(cm);
-    sendNotification(`💸 ${formatMonth(cm)} 結算提醒`,`絜應轉 NT$ ${amt.toLocaleString()} 給伃`);
+  if (now.getDate()>=15 && !settlements.find(s=>s.month===cm)) {
+    const s = calcSettle(cm);
+    if (s.net !== 0) {
+      const absAmt = Math.abs(s.net);
+      const who = s.net>=0 ? "絜轉給伃" : "伃轉給絜";
+      sendNotification(`💸 ${formatMonth(cm)} 結算提醒`,`${who} NT$ ${absAmt.toLocaleString()}`);
+    }
   }
 }
 
