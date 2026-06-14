@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>伃 & 絜 家庭帳本</title>
+<title>家用記帳</title>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <style>
@@ -107,7 +107,7 @@ body{font-family:sans-serif;background:#f5f3ef;max-width:480px;margin:0 auto;pad
 <div class="header">
   <div class="header-top">
     <div>
-      <div class="header-title-sub">家庭帳本</div>
+      <div class="header-title-sub">家用記帳</div>
       <div class="header-title">伃 &amp; 絜</div>
     </div>
     <div id="urgentBadge" class="badge" style="display:none"></div>
@@ -180,18 +180,18 @@ body{font-family:sans-serif;background:#f5f3ef;max-width:480px;margin:0 auto;pad
     <div class="modal-title">新增其他支出</div>
     <div class="field-label">日期</div>
     <input type="date" id="formDate" class="inp">
-    <div class="field-label">類別</div>
+    <div class="field-label">項目名稱</div>
     <input type="text" id="formCategory" class="inp" placeholder="例：清潔用品">
     <div class="field-label">金額（NT$）</div>
     <input type="number" id="formAmount" class="inp" placeholder="0">
     <div class="field-label">由誰支付</div>
     <div class="pay-btns">
-      <button class="pay-btn active" id="payYu" onclick="setPayer('伃')">伃</button>
-      <button class="pay-btn" id="paySis" onclick="setPayer('絜')">絜</button>
+      <button class="pay-btn active" id="payYu" onclick="setPayer('伃')">伃 付</button>
+      <button class="pay-btn" id="paySis" onclick="setPayer('絜')">絜 付</button>
     </div>
     <div class="check-row">
-      <input type="checkbox" id="formSplit" style="width:16px;height:16px;accent-color:#3d6b57">
-      <label for="formSplit">兩人平分這筆費用</label>
+      <input type="checkbox" id="formSplit" checked style="width:16px;height:16px;accent-color:#3d6b57">
+      <label for="formSplit">兩人平分（結算時計入）</label>
     </div>
     <div class="field-label">備註（選填）</div>
     <input type="text" id="formNote" class="inp" placeholder="備註">
@@ -299,11 +299,30 @@ function getDaysUntil(day) {
 }
 function n(x) { return Number(x)||0; }
 function isEvenMonth(ym) { return parseInt(ym.split("-")[1]) % 2 === 0; }
+function calcSettle(ym) {
+  // 固定費用：水費+電費（伃先付，絜付一半給伃）
+  const fixed = expenses.filter(e => e.date?.startsWith(ym) && e.fixed && e.paid);
+  const water = fixed.filter(e=>e.category==="水費").reduce((s,e)=>s+n(e.amount),0);
+  const elec  = fixed.filter(e=>e.category==="電費").reduce((s,e)=>s+n(e.amount),0);
+  const fixedAmt = Math.round((water+elec)/2); // 絜欠伃
+
+  // 其他平分支出
+  const others = expenses.filter(e => e.date?.startsWith(ym) && !e.fixed && e.split);
+  let yuOwes = 0;   // 伃欠絜（絜付的平分）
+  let sisOwes = 0;  // 絜欠伃（伃付的平分）
+  others.forEach(e => {
+    const half = Math.round(n(e.amount)/2);
+    if (e.paidBy==="伃") sisOwes += half;
+    else if (e.paidBy==="絜") yuOwes += half;
+  });
+
+  // 最終：正數=絜欠伃，負數=伃欠絜
+  const net = fixedAmt + sisOwes - yuOwes;
+  return { net, fixedAmt, sisOwes, yuOwes, water, elec };
+}
+
 function calcSettleAmount(ym) {
-  const me = expenses.filter(e => e.date?.startsWith(ym) && e.fixed);
-  const water = me.filter(e => e.category==="水費").reduce((s,e)=>s+n(e.amount),0);
-  const elec  = me.filter(e => e.category==="電費").reduce((s,e)=>s+n(e.amount),0);
-  return Math.round((water+elec)/2);
+  return calcSettle(ym).net;
 }
 
 // Firebase
@@ -547,11 +566,13 @@ function render() {
   if (isEvenMonth(cm) && now.getDate()>=15) {
     const existing = settlements.find(s=>s.month===cm);
     if (!existing) {
-      const amt = calcSettleAmount(cm);
+      const s = calcSettle(cm);
+      const absAmt = Math.abs(s.net);
+      const who = s.net>=0 ? "絜轉給伃" : "伃轉給絜";
       reminderEl.innerHTML = `<div class="settle-card settle-pending">
         <div class="settle-title">💸 本月結算提醒</div>
-        <div class="settle-amount">NT$ ${amt.toLocaleString()}</div>
-        <div class="settle-desc">絜應轉給伃（水費 + 電費各一半）</div>
+        <div class="settle-amount">NT$ ${absAmt.toLocaleString()}</div>
+        <div class="settle-desc">${who}</div>
         <button class="settle-btn" onclick="switchTab('settle')">前往結算 →</button>
       </div>`;
     } else if (existing.confirmed) {
@@ -625,33 +646,46 @@ function renderSettle() {
 
   if (isEvenMonth(cm) && now.getDate()>=15) {
     const existing = settlements.find(s=>s.month===cm);
-    const amt = calcSettleAmount(cm);
+    const s = calcSettle(cm);
     if (!existing) {
-      const meExp = expenses.filter(e=>e.date?.startsWith(cm)&&e.fixed);
-      const water = meExp.filter(e=>e.category==="水費").reduce((s,e)=>s+n(e.amount),0);
-      const elec  = meExp.filter(e=>e.category==="電費").reduce((s,e)=>s+n(e.amount),0);
+      const net = s.net;
+      const who = net >= 0 ? "絜轉給伃" : "伃轉給絜";
+      const absAmt = Math.abs(net);
+      let breakdown = `水費÷2：NT$ ${Math.round(s.water/2).toLocaleString()}　電費÷2：NT$ ${Math.round(s.elec/2).toLocaleString()}`;
+      if (s.sisOwes > 0) breakdown += `<br>其他（絜付一半）：＋NT$ ${s.sisOwes.toLocaleString()}`;
+      if (s.yuOwes > 0) breakdown += `<br>其他（伃付一半）：－NT$ ${s.yuOwes.toLocaleString()}`;
       currentEl.innerHTML = `<div class="settle-card settle-pending">
         <div class="settle-title">💸 ${formatMonth(cm)} 結算</div>
-        <div class="settle-amount">NT$ ${amt.toLocaleString()}</div>
-        <div class="settle-desc">絜應轉給伃<br>水費 NT$ ${Math.round(water/2).toLocaleString()} ＋ 電費 NT$ ${Math.round(elec/2).toLocaleString()}</div>
-        <button class="settle-btn" onclick="confirmSettle('${cm}',${amt})">✓ 確認收款</button>
+        <div class="settle-amount">NT$ ${absAmt.toLocaleString()}</div>
+        <div class="settle-desc">${who}<br><br>${breakdown}</div>
+        <button class="settle-btn" onclick="confirmSettle('${cm}',${net})">✓ 確認收款</button>
       </div>`;
     } else if (existing.confirmed) {
+      const absAmt = Math.abs(n(existing.amount));
+      const who = n(existing.amount)>=0 ? "絜轉給伃" : "伃轉給絜";
       currentEl.innerHTML = `<div class="settle-card settle-done">
         <div class="settle-title">✓ ${formatMonth(cm)} 已結清</div>
-        <div style="font-size:20px;font-weight:700;color:#3d6b57;margin-bottom:4px">NT$ ${n(existing.amount).toLocaleString()}</div>
-        <div style="font-size:12px;color:#888">確認時間：${existing.confirmedAt||""}</div>
+        <div style="font-size:20px;font-weight:700;color:#3d6b57;margin-bottom:4px">NT$ ${absAmt.toLocaleString()}</div>
+        <div style="font-size:12px;color:#888">${who}・確認時間：${existing.confirmedAt||""}</div>
       </div>`;
     }
   } else if (isEvenMonth(cm)) {
+    // 雙月但還沒到15號，預覽結算金額
+    const s = calcSettle(cm);
+    const absAmt = Math.abs(s.net);
+    const who = s.net>=0 ? "絜轉給伃" : "伃轉給絜";
     currentEl.innerHTML = `<div class="settle-card settle-neutral">
-      <div class="settle-title">📅 ${formatMonth(cm)} 結算</div>
-      <div style="font-size:13px;color:#888;margin-top:4px">距離 15 日結算還有 ${15-now.getDate()} 天</div>
+      <div class="settle-title">📅 ${formatMonth(cm)} 結算（預覽）</div>
+      <div style="font-size:20px;font-weight:700;color:#2d2d2d;margin:8px 0 4px">NT$ ${absAmt.toLocaleString()}</div>
+      <div style="font-size:12px;color:#888;margin-bottom:4px">${who}（15 日後可確認）</div>
+      <div style="font-size:11px;color:#bbb">距 15 日還有 ${15-now.getDate()} 天</div>
     </div>`;
   } else {
+    const s = calcSettle(cm);
+    const absAmt = Math.abs(s.net);
     currentEl.innerHTML = `<div class="settle-card settle-neutral">
       <div class="settle-title">📅 下次結算為雙月 15 日</div>
-      <div style="font-size:13px;color:#888;margin-top:4px">僅雙月（2、4、6、8、10、12 月）結算水電費</div>
+      <div style="font-size:13px;color:#888;margin-top:4px">本月其他平分支出：NT$ ${(s.sisOwes+s.yuOwes).toLocaleString()}</div>
     </div>`;
   }
 
